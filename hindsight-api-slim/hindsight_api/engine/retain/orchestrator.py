@@ -613,12 +613,14 @@ def _build_retain_params(contents_dicts, document_tags=None, doc_contents=None):
     if items:
         first_item = items[0]
         for key, value in first_item.items():
-            if key in _RETAIN_PARAMS_NOT_REPLAYED or value is None:
+            # An explicit null event_date means unknown; dropping it made reprocess
+            # treat it as an omitted date and substitute the current time (#5473).
+            if key in _RETAIN_PARAMS_NOT_REPLAYED or (value is None and key != "event_date"):
                 continue
             # event_date arrives as a datetime from some callers and a string from
             # others; retain_params is JSON, so normalise here rather than at every
             # reader.
-            if key == "event_date":
+            if key == "event_date" and value is not None:
                 value = value.isoformat() if hasattr(value, "isoformat") else str(value)
             retain_params[key] = value
 

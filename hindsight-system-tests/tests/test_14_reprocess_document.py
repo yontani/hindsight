@@ -105,3 +105,25 @@ async def test_reprocessing_reports_an_operation_to_wait_on(client, llm, bank_id
     assert result.operation_id
     assert result.items_count == 1
     await settled(bank_id)
+
+
+async def test_reprocessing_preserves_an_unknown_document_date(client, llm, bank_id, settled) -> None:
+    llm.on_step("extract_facts").returns(
+        extracted(fact("Alice moved to Berlin", who="Alice", entities=["Alice", "Berlin"]))
+    )
+    llm.on_step("consolidate").returns(consolidation())
+
+    await client.aretain(bank_id=bank_id, content=CONTENT, document_id=DOCUMENT_ID, timestamp="unset")
+    await settled(bank_id)
+
+    for attempt in range(4):
+        document = await client.documents.get_document(bank_id, DOCUMENT_ID)
+        assert "event_date" in document.retain_params
+        assert document.retain_params["event_date"] is None
+        memories = await client.memory.list_memories(bank_id, document_id=DOCUMENT_ID, limit=100)
+        valid = [item for item in memories.items if item.state == "valid"]
+        assert [item.text for item in valid] == [ORIGINAL_FACT]
+        assert valid[0].mentioned_at is None
+        if attempt < 3:
+            await client.documents.reprocess_document(bank_id, DOCUMENT_ID)
+            await settled(bank_id)

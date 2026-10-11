@@ -59,6 +59,25 @@ def test_event_date_is_normalised_for_json():
     assert p["event_date"] == "2026-01-02T03:04:05"
 
 
+@pytest.mark.asyncio
+async def test_unknown_event_date_survives_repeated_reprocess() -> None:
+    stored = _params(content="An undated note", event_date=None)
+
+    for _ in range(3):
+        item, _strategy = await _reprocess(stored)
+        assert orch._build_contents([item], None)[0].event_date is None
+        stored = _params(**item)
+
+    assert "event_date" in stored
+    assert stored["event_date"] is None
+
+
+def test_missing_event_date_still_defaults_to_now() -> None:
+    stored = _params(content="An undated note", context=None)
+    assert stored == {}
+    assert orch._build_contents([{"content": "An undated note", **stored}], None)[0].event_date is not None
+
+
 def test_a_new_field_round_trips_without_being_listed():
     """The point of inverting the rule: the failure mode is now a deliberate
     exclusion, not a silent omission."""
